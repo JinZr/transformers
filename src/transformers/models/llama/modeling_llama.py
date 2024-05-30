@@ -50,7 +50,6 @@ from ...utils import (
 )
 from .configuration_llama import LlamaConfig
 
-
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
@@ -923,6 +922,18 @@ class LlamaModel(LlamaPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
+        else:
+            token_embeddings = self.embed_tokens(input_ids)
+            logger.warning_once(
+                f"The `inputs_embeds (shape={inputs_embeds.shape})` argument is not none and will be concatenated with the output of `self.embed_tokens` (shape={token_embeddings.shape}) along the time axis."
+            )
+            # `token_embeddings`: [time-axis, batch-axis, embedding-dim]
+            # while `inputs_embeds`: [batch-axis, time-axis, embedding-dim]
+            # thus we need to transpose `inputs_embeds` to match the shape of `token_embeddings`
+            inputs_embeds = torch.cat([token_embeddings, inputs_embeds.transpose(0, 1)], dim=0)
+            logger.warning_once(
+                f"Concatenated `inputs_embeds` with the output of `self.embed_tokens` along the time axis. The shape of the resulting `inputs_embeds` is {inputs_embeds.shape}."
+            )
 
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
