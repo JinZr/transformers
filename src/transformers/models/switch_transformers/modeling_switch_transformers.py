@@ -653,7 +653,9 @@ class SwitchTransformersStack(SwitchTransformersPreTrainedModel):
         "hidden_states": SwitchTransformersBlock,
         "attentions": OutputRecorder(SwitchTransformersAttention, index=-1, layer_name="layer.0"),
         "cross_attentions": OutputRecorder(SwitchTransformersAttention, index=-1, layer_name="layer.1"),
-        "router_logits": SwitchTransformersTop1Router,
+        # Capture both router probabilities and logits from SwitchTransformersTop1Router forward.
+        "router_probs": OutputRecorder(SwitchTransformersTop1Router, index=0),
+        "router_logits": OutputRecorder(SwitchTransformersTop1Router, index=2),
     }
 
     def __init__(self, config):
