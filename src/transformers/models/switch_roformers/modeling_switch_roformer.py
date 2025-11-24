@@ -223,7 +223,10 @@ def _upgrade_stack_to_rope(stack) -> None:
             has_relative_attention_bias=old_self_attention.has_relative_attention_bias and use_rel_bias,
             layer_idx=old_self_attention.layer_idx,
         )
-        _, unexpected_keys = new_self_attention.load_state_dict(old_self_attention.state_dict(), strict=False)
+        attention_state_dict = old_self_attention.state_dict()
+        if not new_self_attention.has_relative_attention_bias:
+            attention_state_dict.pop("relative_attention_bias.weight", None)
+        _, unexpected_keys = new_self_attention.load_state_dict(attention_state_dict, strict=False)
         if unexpected_keys:
             logger.warning(
                 "Unexpected keys when porting SwitchTransformers attention to RoPE: %s", ", ".join(unexpected_keys)
