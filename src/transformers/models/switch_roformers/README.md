@@ -11,7 +11,10 @@ Example
 -------
 
 ```python
-from switch_roformers import SwitchRoFormerConfig, SwitchRoFormerForConditionalGeneration
+from transformers.models.switch_roformers import (
+    SwitchRoFormerConfig,
+    SwitchRoFormerForConditionalGeneration,
+)
 
 config = SwitchRoFormerConfig(
     d_model=768,
