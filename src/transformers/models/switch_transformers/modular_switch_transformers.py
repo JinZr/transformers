@@ -421,10 +421,15 @@ class SwitchTransformersStack(SwitchTransformersPreTrainedModel):
         self.is_decoder = config.is_decoder
 
         sparse_step = config.decoder_sparse_step if self.is_decoder else config.encoder_sparse_step
+        explicit_sparse_layers = config.decoder_sparse_layers if self.is_decoder else config.encoder_sparse_layers
+        sparse_layers_set = set(explicit_sparse_layers) if explicit_sparse_layers is not None else None
         config.num_layers = config.num_decoder_layers if self.is_decoder else config.num_layers
         self.block = nn.ModuleList()
         for i in range(config.num_layers):
-            is_sparse = (i % sparse_step == 1 or sparse_step == 1) if sparse_step > 0 else False
+            if sparse_layers_set is not None:
+                is_sparse = i in sparse_layers_set
+            else:
+                is_sparse = (i % sparse_step == 1 or sparse_step == 1) if sparse_step > 0 else False
 
             self.block.append(
                 SwitchTransformersBlock(
@@ -845,7 +850,12 @@ class SwitchTransformersForConditionalGeneration(SwitchTransformersPreTrainedMod
 
         if output_router_logits:
             # Compute the router loss (z_loss + auxiliary loss) for each router in the encoder and decoder
-            if self.encoder.config.encoder_sparse_step > 1:
+            encoder_sparse_layers = getattr(self.encoder.config, "encoder_sparse_layers", None)
+            decoder_sparse_layers = getattr(self.decoder.config, "decoder_sparse_layers", None)
+            has_encoder_sparse = bool(encoder_sparse_layers) or self.encoder.config.encoder_sparse_step > 1
+            has_decoder_sparse = bool(decoder_sparse_layers) or self.decoder.config.decoder_sparse_step > 1
+
+            if has_encoder_sparse:
                 encoder_router_logits, encoder_expert_indexes = self._unpack_router_logits(encoder_outputs[-1])
                 encoder_z_loss = router_z_loss_func(encoder_router_logits)
                 encoder_router_probs = nn.Softmax(dim=-1)(encoder_router_logits)
@@ -854,7 +864,7 @@ class SwitchTransformersForConditionalGeneration(SwitchTransformersPreTrainedMod
                 encoder_z_loss = 0
                 encoder_aux_loss = 0
 
-            if self.decoder.config.decoder_sparse_step > 1:
+            if has_decoder_sparse:
                 decoder_router_logits, decoder_expert_indexes = self._unpack_router_logits(decoder_outputs[-1])
                 decoder_z_loss = router_z_loss_func(decoder_router_logits)
                 decoder_router_probs = nn.Softmax(dim=-1)(decoder_router_logits)

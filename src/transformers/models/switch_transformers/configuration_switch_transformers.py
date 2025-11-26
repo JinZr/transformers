@@ -14,6 +14,8 @@
 # limitations under the License.
 """Switch Transformers model configuration"""
 
+from typing import Iterable, List, Optional
+
 from ...configuration_utils import PreTrainedConfig
 from ...utils import logging
 
@@ -53,6 +55,12 @@ class SwitchTransformersConfig(PreTrainedConfig):
             Number of hidden layers in the Transformer decoder. Will use the same value as `num_layers` if not set.
         num_sparse_decoder_layers (`int`, *optional*, defaults to 3):
             Number of sparse (MoE) dense hidden layers in the Transformer decoder layer.
+        encoder_sparse_layers (`list[int]`, *optional*):
+            Explicit indices of encoder layers to instantiate as sparse MoE. If set, overrides the automatic stride-based
+            selection driven by `num_sparse_encoder_layers` / `encoder_sparse_step`.
+        decoder_sparse_layers (`list[int]`, *optional*):
+            Explicit indices of decoder layers to instantiate as sparse MoE. If set, overrides the automatic stride-based
+            selection driven by `num_sparse_decoder_layers` / `decoder_sparse_step`.
         num_heads (`int`, *optional*, defaults to 12):
             Number of attention heads for each attention layer in the Transformer encoder.
         num_experts (`int`, *optional*, defaults to 8):
@@ -105,6 +113,8 @@ class SwitchTransformersConfig(PreTrainedConfig):
         num_sparse_encoder_layers=3,
         num_decoder_layers=12,
         num_sparse_decoder_layers=3,
+        encoder_sparse_layers: Optional[List[int]] = None,
+        decoder_sparse_layers: Optional[List[int]] = None,
         num_heads=12,
         num_experts=8,
         router_bias=False,
@@ -126,18 +136,41 @@ class SwitchTransformersConfig(PreTrainedConfig):
         eos_token_id=1,
         **kwargs,
     ):
+        def _validate_sparse_layers(name: str, layers: Optional[Iterable[int]], upper: int) -> Optional[List[int]]:
+            if layers is None:
+                return None
+            validated: List[int] = []
+            for idx in layers:
+                if not isinstance(idx, int):
+                    raise ValueError(f"`{name}` must contain integers, got {type(idx)}")
+                if idx < 0 or idx >= upper:
+                    raise ValueError(f"`{name}` entries must be in [0, {upper - 1}], got {idx}")
+                validated.append(idx)
+            # Remove duplicates while keeping order
+            seen = set()
+            unique: List[int] = []
+            for idx in validated:
+                if idx not in seen:
+                    unique.append(idx)
+                    seen.add(idx)
+            return unique
+
         self.vocab_size = vocab_size
         self.d_model = d_model
         self.d_kv = d_kv
         self.d_ff = d_ff
 
         self.num_sparse_encoder_layers = num_sparse_encoder_layers
+        self.encoder_sparse_layers = _validate_sparse_layers("encoder_sparse_layers", encoder_sparse_layers, num_layers)
 
         self.num_layers = num_layers
         self.num_decoder_layers = (
             num_decoder_layers if num_decoder_layers is not None else self.num_layers
         )  # default = symmetry
         self.num_sparse_decoder_layers = num_sparse_decoder_layers
+        self.decoder_sparse_layers = _validate_sparse_layers(
+            "decoder_sparse_layers", decoder_sparse_layers, self.num_decoder_layers
+        )
 
         # This tells us, each how many encoder layer we'll have to set a sparse layer.
         if self.num_sparse_encoder_layers > 0:
