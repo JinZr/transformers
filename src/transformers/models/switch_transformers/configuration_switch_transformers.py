@@ -49,12 +49,14 @@ class SwitchTransformersConfig(PreTrainedConfig):
             Transformer.
         num_layers (`int`, *optional*, defaults to 12):
             Number of dense hidden layers in the Transformer encoder layer.
-        num_sparse_encoder_layers (`int`, *optional*, defaults to 3):
-            Number of sparse (MoE) dense hidden layers in the Transformer encoder layer.
+        num_sparse_encoder_layers (`int` or `None`, *optional*, defaults to 3):
+            Number of sparse (MoE) dense hidden layers in the Transformer encoder layer. Must be unset/`None`/`0` if
+            `encoder_sparse_layers` is provided.
         num_decoder_layers (`int`, *optional*, defaults to 12):
             Number of hidden layers in the Transformer decoder. Will use the same value as `num_layers` if not set.
-        num_sparse_decoder_layers (`int`, *optional*, defaults to 3):
-            Number of sparse (MoE) dense hidden layers in the Transformer decoder layer.
+        num_sparse_decoder_layers (`int` or `None`, *optional*, defaults to 3):
+            Number of sparse (MoE) dense hidden layers in the Transformer decoder layer. Must be unset/`None`/`0` if
+            `decoder_sparse_layers` is provided.
         encoder_sparse_layers (`list[int]`, *optional*):
             Explicit indices of encoder layers to instantiate as sparse MoE. If set, overrides the automatic stride-based
             selection driven by `num_sparse_encoder_layers` / `encoder_sparse_step`.
@@ -162,6 +164,8 @@ class SwitchTransformersConfig(PreTrainedConfig):
 
         self.num_sparse_encoder_layers = num_sparse_encoder_layers
         self.encoder_sparse_layers = _validate_sparse_layers("encoder_sparse_layers", encoder_sparse_layers, num_layers)
+        if self.encoder_sparse_layers == []:
+            self.encoder_sparse_layers = None
 
         self.num_layers = num_layers
         self.num_decoder_layers = (
@@ -171,18 +175,33 @@ class SwitchTransformersConfig(PreTrainedConfig):
         self.decoder_sparse_layers = _validate_sparse_layers(
             "decoder_sparse_layers", decoder_sparse_layers, self.num_decoder_layers
         )
+        if self.decoder_sparse_layers == []:
+            self.decoder_sparse_layers = None
+
+        if self.encoder_sparse_layers is not None and self.num_sparse_encoder_layers not in (None, 0):
+            raise ValueError(
+                "When `encoder_sparse_layers` is set, `num_sparse_encoder_layers` must be omitted, set to 0, or None."
+            )
+        if self.decoder_sparse_layers is not None and self.num_sparse_decoder_layers not in (None, 0):
+            raise ValueError(
+                "When `decoder_sparse_layers` is set, `num_sparse_decoder_layers` must be omitted, set to 0, or None."
+            )
 
         # This tells us, each how many encoder layer we'll have to set a sparse layer.
-        if self.num_sparse_encoder_layers > 0:
+        if self.encoder_sparse_layers is not None:
+            self.encoder_sparse_step = 0
+        elif self.num_sparse_encoder_layers and self.num_sparse_encoder_layers > 0:
             self.encoder_sparse_step = self.num_layers // self.num_sparse_encoder_layers
         else:
-            self.encoder_sparse_step = self.num_layers  # HACK: this will create 0 sparse layers
+            self.encoder_sparse_step = 0
 
         # This tells us, each how many encoder layer we'll have to set a sparse layer.
-        if self.num_sparse_decoder_layers > 0:
+        if self.decoder_sparse_layers is not None:
+            self.decoder_sparse_step = 0
+        elif self.num_sparse_decoder_layers and self.num_sparse_decoder_layers > 0:
             self.decoder_sparse_step = self.num_decoder_layers // self.num_sparse_decoder_layers
         else:
-            self.decoder_sparse_step = self.num_decoder_layers  # HACK: this will create 0 sparse layers
+            self.decoder_sparse_step = 0
 
         self.num_heads = num_heads
         self.num_experts = num_experts
